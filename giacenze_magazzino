@@ -1,0 +1,102 @@
+import pandas as pd
+import xlrd
+from tkinter import *
+from tkinter import filedialog, ttk
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import os
+
+def open_mag_file():
+    global mag_path
+    mag_path = filedialog.askopenfilename()
+    mag_box.insert(0, mag_path)
+
+def creazione_excel():
+    mag_path = mag_box.get()
+    
+    # Carica il file Excel
+    mag_file = pd.read_excel(mag_path)
+    print(mag_file.columns)
+    mag_file = mag_file.rename(columns={ 'Quantita\' (um Magazzino)': 'Qta ordinata', 'Quantita\' Giacenza (um Magazzi': "Qta giacenza"})
+    
+    # Calcola la differenza
+    mag_file["differenza"] = mag_file['Qta giacenza'] - mag_file["Qta ordinata"]
+    print(mag_file['differenza'])
+
+    # Filtra le righe con differenza > 0 e ordino il file
+    mag_differenza = mag_file.loc[mag_file["differenza"] <= 5]
+    mag_differenza = mag_differenza.sort_values('differenza', ascending=True)
+    print(mag_differenza)
+
+    #togli colonne in più
+    col = ['Data Registrazione', 'Codice Articolo','Qta ordinata','Qta giacenza', "differenza"]
+    mag_differenza = mag_differenza[col]
+
+    #colora righe in maniera diversa
+    #1 creo il workbook
+    data = mag_differenza.iloc[1,0]
+    file_path =  f"corr_mag_excel\mag_con_differenze_{data}.xlsx"
+    mag_differenza.to_excel(file_path, index=False)
+    wb = load_workbook(file_path)
+    worksheet = wb.active
+    differenza_col_idx = mag_differenza.columns.get_loc("differenza") + 1
+    #2 definire colori
+    fill_neg = PatternFill(start_color="CCEBC5", end_color="CCEBC5", fill_type="solid")
+    fill_neu = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    fill_pos = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+    #3 definire condizioni
+    for row in range(2, worksheet.max_row + 1):  # inizia da 2 per saltare l'header
+        cell_value = worksheet.cell(row=row, column=differenza_col_idx).value
+        if cell_value < 0:
+            for col in range(1, worksheet.max_column + 1):  # colora tutta la riga
+                worksheet.cell(row=row, column=col).fill = fill_pos
+        if cell_value == 0:
+            for col in range(1, worksheet.max_column + 1):
+                worksheet.cell(row=row, column=col).fill = fill_neu
+        if cell_value > 0:
+            for col in range(1, worksheet.max_column + 1):
+                worksheet.cell(row=row, column=col).fill = fill_neg
+
+    rows_to_add = []
+    for row in range(2, worksheet.max_row + 1):  # Inizia da 2 per saltare l'header
+        current_value = worksheet.cell(row=row, column=differenza_col_idx).value
+        prev_value = worksheet.cell(row=row-1, column=differenza_col_idx).value if row > 2 else None
+        
+        if prev_value is not None:
+            # Condizione per aggiungere una riga vuota tra valori negativi e 0
+            if prev_value < 0 and current_value == 0:
+                rows_to_add.append(row)
+            # Condizione per aggiungere una riga vuota tra 0 e valori positivi
+            elif prev_value == 0 and current_value > 0:
+                rows_to_add.append(row)
+
+    # Aggiungi le righe vuote in corrispondenza delle posizioni
+    for row in reversed(rows_to_add):  # Iniziamo dalla fine per evitare problemi con lo spostamento delle righe
+        worksheet.insert_rows(row)
+
+    wb.save(file_path)
+    mag_differenza = pd.read_excel(file_path)
+
+    # Mostra i risultati nel widget Text
+    text_output.delete('1.0', END)  # Pulisci il contenuto precedente
+    text_output.insert(END, mag_differenza.to_string(index=False))  # Inserisci i dati filtrati
+
+# Struttura Tkinter
+root = Tk()
+root.title("Corrispondenze magazzino")
+
+text_mag = Label(root, text="Inserisci qui il file excel", padx=10, pady=30)
+mag_box = Entry(root, width=50)
+browse_button_lordo = Button(root, text="Browse", command=open_mag_file, padx=10)
+submit_botton = Button(root, text="INVIA", command=creazione_excel)
+
+text_mag.grid(row=0, column=0)
+mag_box.grid(row=0, column=1)
+browse_button_lordo.grid(row=0, column=2)
+submit_botton.grid(row=1, column=1)
+
+# Aggiungi un widget Text per mostrare le righe filtrate
+text_output = Text(root, width=100, height=20, wrap=NONE)
+text_output.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+
+root.mainloop()
