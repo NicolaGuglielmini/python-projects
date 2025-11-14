@@ -1,0 +1,387 @@
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+from collections import Counter
+
+#Dati iniziali
+#############
+#MTSR
+Vxy_mtsr = 1
+Vz_mtsr = 0.8
+a_mtsr = 0.3
+#time load/unload
+T_lu_mtsr = 5
+#position time
+t_pt_mtsr = 5
+cost_mtsr = 600000
+back_trays = 8
+
+#AMR
+Vxy_amr = 4
+a_amr = 1
+T_lu_amr = 3
+t_pt_amr = 3
+cost_amr = 70000
+
+#Box sizes
+l_b = 0.4
+w_b = 0.6
+h_b = 0.4
+
+#Parameters
+num_boxes = 2000
+Max_picking_height = 8
+z_b = 0.5
+total_numm_floors= 16
+Aisle_wdith	= 1.2
+shelf_module_lenght	= 2
+num_boxes_per_module= 4
+shelf_depth =	0.6
+stock_type	= "single"
+system_capacity	= 20000
+aisle	= 8
+paicking_station = 3
+distance_shelf_ps =12
+demand = 200
+w_part = 2.4
+##############
+
+#Dimensioni del magazzino
+n_x_max = 16
+mag_width = 19.2
+n_y_max = 84
+mag_lenght = 42
+n_z_max = 15
+mag_height = 8
+
+ps1_x = 3.2
+ps2_x = 9.6
+ps3_x = 16
+
+#iterazioni
+n = 10
+
+#########################
+#Posizione iniziale d dei amr
+x_d_BM = mag_width + 0.8
+y_d_BM = distance_shelf_ps
+z_d_BM = 0
+
+#Posizione d dei mtsr
+x_d_BP = w_part * 2
+y_d_BP = (mag_lenght + distance_shelf_ps) + 2
+z_d_BP = mag_height / 2
+############################
+
+#Considero inizialmente il magazzino come fosse un unico corridoio
+#in modo che il robot possa stare solo nel suo corridoio
+
+###########################
+#PERCORSO MTSR:
+"""
+1 Da dwell a retrieval point
+2 load
+3 da retreval point a buffer
+4 unload
+5 Da buffer a dwell point
+6 Da dwell a buffer
+7 load
+8 Da buffer a retrieval
+9 unload
+10 Da retrieval a dwell
+"""
+tempi_mtsr = []
+tempi_ciclo_mtsr = []
+
+#PERCORSO AMR
+"""
+1 Da dwell a buffer
+2 load
+3 Da buffer a pciking station
+4 Queue time
+5 Position time
+6 Da picking station a buffer
+7 unload
+8 Da buffer a dwell
+"""
+tempi_amr = []
+tempi_ciclo_amr = []
+#############################
+
+#Dati di ciclo
+media_tempi_ciclo_mtsr = []
+media_tempi_ciclo_amr = []
+num_mtsr_n = []
+num_amr_n = []
+num_mtsr_ciclo = []
+cap_mtsr_ciclo = []
+
+num_amr_ciclo = []
+cap_amr_ciclo = []
+
+distance = []
+dis_x = []
+dis_y = []
+dis_z = []
+
+#Cicli e iterazioni
+cicli = 1
+n = 1
+
+for i in range(cicli):
+    for num in range(n):
+        #random box ritirare
+        #Per domensionare gli MTSR considero come se ci fosse un unica aisle 
+        # in modo che vedo il tempo ciclo di un MTSR all'interno della singola aisle
+        #e vedo quanti me ne servono per gestire la domanda totale di 200/tote/ora
+
+        #Per dimensionare gli AMR faccio come ipotesi inizale che essi possono andare ovunque 
+        #quindi non ho più vincoli su n_x_r
+        #n_x_r = np.random.randint(1, 8)
+        n_x_r = 2
+        #n_y_r = np.random.randint(1, n_y_max)
+        n_y_r = 63
+        #n_z_r = np.random.randint(1, n_x_max)
+        n_z_r = 8
+        print(y_d_BP)
+        #Liste tempi
+        tempi_mtsr = []
+        tempi_amr = []
+
+        #Posizione box
+        if n_x_r % 2 > 2:
+            x_r = int(n_x_r / 2) * w_part + (n_x_r % 2) * w_b + Aisle_wdith
+        else:
+            x_r = int(n_x_r / 2) * w_part + (n_x_r % 2) * w_b
+
+        y_r = 0.05 + 0.5 * n_y_r + distance_shelf_ps
+        z_r = 0.5 + 0.5 * n_z_r
+
+        print((n_x_r , x_r))
+        print((n_y_r, y_r))
+        print((n_z_r, z_r))
+        print("#"*10)
+
+        #### #MTSR ####
+
+        #1-2 tempo da dwell a retrieval + load
+        if int(x_r / 2) == int(x_d_BP / 2):
+            t_d_r_MTSR = abs(y_r - y_d_BP)/ Vxy_mtsr + z_r / Vz_mtsr + z_d_BP / Vz_mtsr
+            print("1")
+        else:
+            print("2")
+            t_d_r_MTSR = abs(x_r - x_d_BP)/ Vxy_mtsr + (- y_r + 55) / Vxy_mtsr + (-y_d_BP + mag_lenght) / Vxy_mtsr + z_r / Vz_mtsr + z_d_BP / Vz_mtsr
+
+        print("."*10)
+        print( abs(x_r - x_d_BP)/ Vxy_mtsr)
+        print((- y_r + 54) / Vxy_mtsr )
+        print(z_r / Vz_mtsr )
+        print( z_d_BP / Vz_mtsr)
+        print(t_d_r_MTSR)
+        print("."*10)
+
+        print(f"tempo da dwell a recupero per MTSR {t_d_r_MTSR + T_lu_mtsr}")
+        tempi_mtsr.append(t_d_r_MTSR)
+        tempi_mtsr.append(T_lu_mtsr)
+
+        #3-4 tempo da retrieval a buffer + unload
+        t_r_b_MTSR = abs(z_b - z_r) / Vz_mtsr
+        print(f"tempo da recupero a buffer per MTSR {t_r_b_MTSR + T_lu_mtsr}")
+        tempi_mtsr.append(t_r_b_MTSR)
+        tempi_mtsr.append(T_lu_mtsr)
+        
+        #5 Tempo da buffer a dwell
+        if int(x_r / 2) == int(x_d_BP / 2):
+            t_b_d_MTSR = abs(y_r - y_d_BP)/ Vxy_mtsr + z_r / Vz_mtsr + z_d_BP / Vz_mtsr
+            print("1")
+        else:
+            print("2")
+            t_b_d_MTSR = abs(x_r - x_d_BP)/ Vxy_mtsr + (- y_r + 54) / Vxy_mtsr + (-y_d_BP + mag_lenght) / Vxy_mtsr + z_r / Vz_mtsr + z_d_BP / Vz_mtsr
+        
+        print(f"tempo da buffer a dwell per MTSR {t_b_d_MTSR}")
+        tempi_mtsr.append(t_b_d_MTSR)
+
+        #6-7 tempo da dwell a buffer + load
+        #x_r = x_b e y_r = y_d
+        if int(x_r / 2) == int(x_d_BP / 2):
+            t_d_b_MTSR = abs(y_r - y_d_BP)/ Vxy_mtsr + z_r / Vz_mtsr + z_d_BP / Vz_mtsr
+            print("1")
+        else:
+            print("2")
+            t_d_b_MTSR = abs(x_r - x_d_BP)/ Vxy_mtsr + (- y_r + 54) / Vxy_mtsr + (-y_d_BP + mag_lenght) / Vxy_mtsr + z_r / Vz_mtsr + z_d_BP / Vz_mtsr
+
+        print(f"tempo da dwell a buffer per MTSR {t_d_b_MTSR + T_lu_mtsr}")
+        tempi_mtsr.append(t_d_b_MTSR)
+        
+        tempi_mtsr.append(T_lu_mtsr)
+        
+        #8-9 Tempo da buffer a retrieval + unload
+        print(f"tempo da buffer a retieval per MTSR {t_r_b_MTSR + T_lu_mtsr}")
+        tempi_mtsr.append(t_r_b_MTSR)
+        tempi_mtsr.append(T_lu_mtsr)
+
+        #10 Tempo da retrieval a dwell
+        print(f"tempo da recupero a dwell per MTSR {t_d_r_MTSR}")
+        tempi_mtsr.append(t_d_r_MTSR)
+
+        print("#"*20)
+
+        #Tempo ciclo del mtsr
+        Tempo_ciclo_mtsr = round(sum(tempi_mtsr),2)
+        print(tempi_mtsr)
+        print(F"Tempo ciclo MTSR: {Tempo_ciclo_mtsr}")
+
+        tempi_ciclo_mtsr.append(Tempo_ciclo_mtsr)
+        print(tempi_ciclo_mtsr)
+        print("#"*20)
+
+        print("AMR")
+
+        #AMR
+        #1-2 tempo da posizione di riposo a buffer
+        T_d_b_BM = abs(x_r - x_d_BM) / Vxy_amr + abs(y_r -y_d_BM) / Vxy_amr
+        print(f"tempo da dimora a buffer per AMR {T_d_b_BM  + T_lu_amr}")
+        tempi_amr.append(T_d_b_BM)
+        tempi_amr.append(T_lu_amr)
+
+        #3 tempo da buffer a picking station
+        x_b_ps = min(ps1_x - x_r, ps2_x - x_r, ps3_x - x_r)
+        t_b_ps_BM = abs(x_b_ps -x_r) / Vxy_amr + abs(0-y_r) / Vxy_amr
+        print(f"tempo da buffer a picking station per AMR {t_b_ps_BM}")
+        tempi_amr.append(t_b_ps_BM)
+
+        #4Tempo di coda a picking station
+        service_rate = 1 / t_pt_amr
+        tempo_coda = (demand / 3600) / (service_rate * (service_rate - demand / 3600))
+        print(f"Tempo di coda: {tempo_coda}")
+        tempi_amr.append(tempo_coda)
+
+        #5 tempo di lavoro a pciking station
+        print(f"tempo lavoro a picking station: {t_pt_amr}")
+        tempi_amr.append(t_pt_amr)
+
+        #6-7 tempo da picking station a buffer area
+        t_ps_b_BM = t_b_ps_BM + T_lu_amr
+        print(f"tempo da picking station a buffer per AMR {t_b_ps_BM  + T_lu_amr}")
+        tempi_amr.append(t_b_ps_BM)
+        tempi_amr.append(T_lu_amr)
+
+        #8 tempo da buffer a dwell
+        print(f"Tempo da buffer a dwell per AMR: {T_d_b_BM}")
+        tempi_amr.append(T_d_b_BM)
+
+        #Tempo ciclo amr
+        Tempo_ciclo_amr = round(sum(tempi_amr),2)
+        print(tempi_amr)
+        print(f"Tempo ciclo AMR: {Tempo_ciclo_amr}")
+        print("#"*20)
+
+        tempi_ciclo_amr.append(Tempo_ciclo_amr)
+        print(tempi_ciclo_amr)
+        print("#"*20)
+
+        #####################
+        #Calcolo del numero di MTSR
+        media_tc_mtsr = float(np.mean(tempi_ciclo_mtsr))
+        print(f"la media del tempo ciclo è: {media_tc_mtsr}")
+        cap_mtsr = round(3600 / np.mean(tempi_ciclo_mtsr), 2)
+        print(f"cap_MTSR: {cap_mtsr}")
+        num_mtsr = demand / cap_mtsr
+        print(f"num mtsr {num_mtsr}")
+        if num_mtsr - int(num_mtsr) < 0.3:
+            num_mtsr = math.floor(num_mtsr)
+        else:
+            num_mtsr = math.ceil(num_mtsr)
+        print(f"num mtsr {num_mtsr}")
+
+        num_mtsr_n.append(num_mtsr)
+        print("#"*20)
+
+        #Calcolo del numero di AMR
+        media_tc_amr = float(np.mean(tempi_ciclo_amr))
+        print(f"tempo ciclo amr {media_tc_amr}")
+        cap_amr = round(3600 / np.mean(tempi_ciclo_amr), 2)
+        print(f"cap_AMR: {cap_amr}")
+        num_amr = demand / cap_amr
+        print(f"num AMR: {num_amr}")
+        if num_amr - int(num_amr) < 0.3:
+            num_amr = math.floor(num_amr)
+        else:
+            num_amr = math.ceil(num_amr)
+
+        print(f"num AMR: {num_amr}")
+        
+        num_amr_n.append(num_amr)
+        print("#"*20)
+
+        #Lista delle distanze
+        d_x = abs(x_r - x_d_BP)
+        dis_x.append(d_x)
+        d_y = abs(y_r - y_d_BP)
+        dis_y.append(d_y)
+        d_z = abs(z_r - z_d_BP)
+        dis_z.append(d_z)
+        dis_module = math.sqrt(d_x**2 + d_y**2 + d_z**2)
+        distance.append(dis_module)
+
+
+    #Calcolo delle medie di MTSR
+    mean_num_mtsr_n = float(np.mean(num_mtsr_n))
+    if mean_num_mtsr_n - int(mean_num_mtsr_n) < 0.3:
+        mean_num_mtsr_n = math.floor(mean_num_mtsr_n)
+    else:
+        mean_num_mtsr_n = math.ceil(mean_num_mtsr_n)
+
+    num_mtsr_ciclo.append(mean_num_mtsr_n)
+    num_mtsr_n = []
+
+    #Calcolo delle medie di AMR
+    mean_num_amr_n = float(np.mean(num_amr_n))
+    if mean_num_amr_n - int(mean_num_amr_n) < 0.3:
+        mean_num_amr_n = math.floor(mean_num_amr_n)
+    else:
+        mean_num_amr_n = math.ceil(mean_num_amr_n)
+
+    num_amr_ciclo.append(mean_num_amr_n)
+    num_amr_n = []
+
+    #Reset di tutte le liste
+    tempi_mtsr = []
+    tempi_ciclo_mtsr = []
+    tempi_ciclo_mtsr = []
+    tempi_amr = []
+    tempi_ciclo_amr = []
+    tempi_ciclo_totali = []
+    print("."*20)
+
+    media_d_x = np.mean(d_x)
+    media_d_y = np.mean(d_y)
+    media_d_z = np.mean(d_z)
+    print(media_d_x)
+    print(media_d_y)
+    print(media_d_z)
+
+    print("."*10)
+    media_distanze = np.mean(distance)
+    print(media_distanze)
+    dev_St_distanze = np.std(distance)
+    print(dev_St_distanze)
+
+print(num_mtsr_ciclo)
+print("."*10)
+print(num_amr_ciclo)
+
+# Conta le occorrenze
+#conteggi = Counter(num_mtsr_ciclo)
+
+conteggi = Counter(num_mtsr_ciclo)
+
+
+# Crea il grafico
+plt.bar(conteggi.keys(), conteggi.values())
+plt.xlabel('Valore')
+plt.ylabel('Frequenza')
+plt.title('Distribuzione delle occorrenze')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
