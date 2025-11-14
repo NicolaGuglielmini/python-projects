@@ -1,0 +1,308 @@
+import tkinter as tk
+from tkinter import *
+from tkinter import filedialog, ttk
+import pandas as pd
+import openpyxl
+import xlrd
+
+# ISTRUZIONI PER LA FORMATTAZIONE DEI FILE
+# i file non devono essere modificati, il programma è giá automatizzato
+#  per modificare i file da zero
+
+##############
+#modificare righe 125, 179 e 247 alla fine dell'anno
+##############
+
+############################################
+# Funzione per selezionare il file "lordo"
+def open_file_lordo():
+    global lordo_filename
+    lordo_filename = filedialog.askopenfilename()
+    lordo_box.insert(0, lordo_filename)
+
+
+# Funzione per selezionare il file "avere"
+def open_file_avere():
+    global avere_filename
+    avere_filename = filedialog.askopenfilename()
+    avere_box.insert(0, avere_filename)
+
+
+# Funzione per ottenere i percorsi dei file e creare Excel
+def creazione_excel():
+
+    # Prendere i valori dai box e dalla tendina
+    lordo_filename = lordo_box.get()
+    avere_filename = avere_box.get()
+    mese_selezionato = tendina_mese.get()
+
+    # Controlla se i percorsi dei file non sono vuoti
+    if not lordo_filename:
+        print("Errore: Nessun file 'lordo' selezionato!")
+        return
+    if not avere_filename:
+        print("Errore: Nessun file 'avere' selezionato!")
+        return
+
+    # Tentativo di apertura del file 'lordo'
+    try:
+        fl = pd.read_csv(lordo_filename)
+    except Exception as e:
+        print(f"Errore nell'apertura del CSV: {e}, tentando con Excel.")
+        try:
+            fl = pd.read_excel(lordo_filename)
+        except Exception as e:
+            print(f"Errore nell'apertura del file Excel: {e}")
+            return
+
+    # Tentativo di apertura del file 'avere'
+    try:
+        fa = pd.read_excel(avere_filename)
+    except Exception as e:
+        print(f"Errore nell'apertura dell'Excel: {e}, tentando con CSV.")
+        try:
+            fa = pd.read_csv(avere_filename)
+        except Exception as e:
+            print(f"Errore nell'apertura del file CSV: {e}")
+            return
+
+    # Verifica apertura file con stampa (facoltativo)
+    print(fl.head(3))
+    print(fa.head(3))
+
+    ######################################
+    # AGGIUSTAMENTO FILE FL
+    """
+    il file FL ha il problema che tutto è compresso nella prima colonna e seprato solo da "" e ,
+    Voglio espandere il dataset su tutte le colonne e rinominarle
+    """
+    # creazione lista nomi colonne
+    fl_col_list = fl.columns.tolist()
+    fl_col_replace = fl_col_list[0].replace('"', "")
+    fl_col_nomi = fl_col_replace.split(",")
+    fl_col_enumerate = []
+    for idx, i in enumerate(fl_col_nomi):
+        fl_col_enumerate.append((idx,i))
+    print(fl_col_enumerate)
+    print("FL 1: sistemazione col fatto")
+    # tolgo l2 virgolette dai nomi e espando il dataset in base alle ","
+    fl_separato = fl.iloc[:, 0].str.split(",", expand=True)
+    fl_virgolette = fl_separato.replace(r'"', "", regex=True)
+    fl_virgolette.head(3)
+
+    fl_separato = fl_virgolette
+    print("FL 2: fi_separato creato")
+    # unisco le colonne 5 e 6 con . per creare il numero del Lordo
+    fl_separato.iloc[:, 5] = fl_separato.iloc[:, 5] + "." + fl_separato.iloc[:, 6]
+    print("FL 3: Colonna lordo unita")
+    # rimuovo dal dataset le colonne non necessarie
+    fl_cols_to_drop = list(range(6, 13)) + list(range(16, 25))
+    fl_separato = fl_separato.drop(fl_separato.columns[fl_cols_to_drop], axis=1)
+    print("FL 4: Col non necessarie rimosse")
+    # rimuovo dall'enumerate le colonne non necessarie
+    fl_en_to_drop = list(range(6, 9)) + list(range(12, 18))
+    fl_nuovi_nomi = [
+        val for idx, val in fl_col_enumerate if not idx in fl_en_to_drop
+    ]
+    # scrivo i vecchi nomi da sostituire con i nuovi
+    fl_vecchi_nomi = fl_separato.columns.tolist()
+    fl_vecchi_nomi_en = []
+
+    for idx,i in enumerate(fl_vecchi_nomi):
+        fl_vecchi_nomi_en.append((idx,i))
+
+    dict_col = {
+        fl_vecchi_nomi[idx] : fl_nuovi_nomi[idx]
+        for idx, i in fl_vecchi_nomi_en
+    }
+
+    fl_renamed = fl_separato.rename(columns=dict_col)
+    print("FL 5: fi_renamed creato con successo")
+    print("FL_6: file lordo trasfromato con successo")
+    fl = fl_renamed
+
+    print("#" * 20)
+    print(fl.head(5))
+    print("#" * 20)
+
+    # creo la directory per salvare il file lordo
+    directory_name_fl = "file lordo 25"
+    fl.to_excel(f"{directory_name_fl}/p_lordo_{mese_selezionato}_25.xlsx")
+    print("#" * 20)
+    print("#" * 20)
+    ######################################
+
+
+    
+    # AGGIUSTAMENTO FILE FA
+    
+    #il file FA ha tante colonne in eccesso e non ha i nomi delle colonne
+    
+    # mi indicizzo tutte le col presenti
+    fa_col_en = []
+    for idx, col in enumerate(fa.columns):
+        fa_col_en.append((idx, col))
+    # con gli indici trovo le colonne da eliminare
+    fa_cols_to_drop = list(range(0, 42)) + list(range(43, 49)) + [50] + list(range(53, 84))
+    fa = fa.drop(fa.columns[fa_cols_to_drop], axis=1)
+    print("FA 1: Col non necessarie rimosse")
+    # creo i nomi delle col
+    fa_nuovi_nomi = [
+        "Data registrazione",
+        "Causale contabile",
+        "Dare in UdC",
+        "Avere in UdC",
+    ]
+    # creo il dict per inserire i nomi col
+    fa_dict_nomi = {
+        fa.columns[i] : fa_nuovi_nomi[i] for i in range(0,4)
+    }
+    # copio i nomi col nella prima riga
+
+    # creo il dizionario
+    fa_nomi_col = fa.columns
+    dict_prima_riga = {fa.columns[i] : fa_nomi_col[i] for i in range(0,4)}
+
+    # aggiungo il dizionario (prima_riga) al dataset
+    fa_pr = pd.concat([pd.DataFrame([dict_prima_riga]), fa], ignore_index=True)
+    print("FA 2: Prima riga aggiunta al dataset")
+    # rinomino i nomi col con quelli nuovi
+    fa_renamed = fa_pr.rename(columns=fa_dict_nomi)
+    print("FA 3: Nomi col rinominati")
+    # controllo che ci sia 0 nel avere in UdC
+    if fa_renamed["Dare in UdC"][0] != 0 and fa_renamed["Avere in UdC"][0] != 0:
+        fa_renamed.loc[0, "Avere in UdC"] = 0
+    fa_renamed["Data registrazione"][0] = fa_renamed["Data registrazione"][0][
+        0 : len(fa_renamed["Data registrazione"][0]) - 2]
+
+    print("FA_4: file avere trasfromato con successo")
+    fa = fa_renamed
+    print("#" * 20)
+    print(fa.head(5))
+    print("#" * 20)
+
+    # creo la directory per salvare il file avere
+    directory_name_fa = "file avere 25"
+    fa.to_excel(f"{directory_name_fa}/e_avere_{mese_selezionato}_25.xlsx")
+
+    print("#"*20)
+
+    
+
+    ########################
+    # CREAZIONE CORRISPETTIVI
+    # missing values
+    fl = fl.fillna(0)
+    fa = fa.fillna(0)
+
+
+    # evitare errore quando la cifra è divisa da virgole
+    for c in range(len(fl["Lordo "])):
+        try:
+            fl["Lordo "][c] = float(fl["Lordo "][c])
+        except:
+            pass
+
+    # evitare errore quando la cifra è divisa da virgole
+    #Dare in UdC = "Dare in valutaC"
+    for d in range(len(fa["Dare in UdC"])):
+        try:
+            fa["Dare in UdC"][d] = float(fa["Dare in UdC"][d])
+        except:
+            pass
+
+    #Avere in UdC = "Avere in valuta"
+    for a in range(len(fa["Avere in UdC"])):
+        try:
+            fa["Avere in UdC"][a] = float(fa["Avere in UdC"][a])
+        except:
+            pass
+
+    fa["Tot UdC"] = fa["Dare in UdC"] - fa["Avere in UdC"]
+
+    valori_diversi_lordo = []
+    for j in fl["Lordo "]:
+        if list(fl["Lordo "]).count(j) != list(fa["Tot UdC"]).count(j):
+            valori_diversi_lordo.append(j)
+
+    fl_filtered = fl[fl["Lordo "].isin(valori_diversi_lordo)]
+    fl_filtered = fl_filtered[
+        ["Data", "Descrizione", "Lordo ", "Indirizzo email mittente", "Nome"]
+    ]
+    print("="*30)
+    print(fl_filtered)
+    print("="*30)
+    print("creazione: si_esolver_no_paypal effettuata")
+    print("=" * 30)
+    print("=" * 30)
+
+    valori_diversi_fa = []
+
+    for s in fa["Tot UdC"]:
+        if list(fa["Tot UdC"]).count(s) != list(fl["Lordo "]).count(s):
+            valori_diversi_fa.append(s)
+
+    fa_filtered = fa[fa["Tot UdC"].isin(valori_diversi_fa)]
+    fa_filtered = fa_filtered[
+        ["Data registrazione", "Causale contabile", "Dare in UdC", "Avere in UdC"]
+    ]
+    print("=" * 30)
+    print(fa_filtered)
+    print("=" * 30)
+    print("creazione: si_paypal_no_esolver effettuata")
+    print("=" * 30)
+    print("=" * 30)
+
+    # Creo le directory per salvare i file
+    directory_name = "corrispettivi_mancanti_25"
+
+    fa_filtered.to_excel(
+        f"{directory_name}/si_esolver_no_paypal_{mese_selezionato}.xlsx"
+    )
+    fl_filtered.to_excel(
+        f"{directory_name}/si_paypal_no_esolver_{mese_selezionato}.xlsx"
+    )
+
+    print("PPROCESSO AVVENUTO CON SUCCESSO")
+
+# Setup della GUI
+root = Tk()
+root.title("CORRISPETTIVI PAYPAL")
+
+# bottons
+text_lordo = Label(root, text="Inserisci file di papypal (lordo)", padx=10, pady=30)
+lordo_box = Entry(root, width=50)
+browse_button_lordo = Button(root, text="Browse", command=open_file_lordo, padx=10)
+text_avere = Label(root, text="Inserisci file di e-solver (avere)", padx=10, pady=20)
+avere_box = Entry(root, width=50)
+browse_button_PAY = Button(root, text="Browse", command=open_file_avere, padx=10)
+
+tendina_mese = ttk.Combobox(root, width=10)
+
+month_num = []
+for i in range(1, 13):
+    if i < 10:
+        i = "0" + str(i)
+        month_num.append(i)
+    else:
+        i = str(i)
+        month_num.append(i)
+
+mese_label = Label(root, text="mese: ")
+tendina_mese["values"] = [j for j in month_num]
+
+submit_botton = Button(root, text="INVIA", command=creazione_excel)
+
+# schema
+text_lordo.grid(row=0, column=0)
+lordo_box.grid(row=0, column=1)
+browse_button_lordo.grid(row=0, column=2)
+text_avere.grid(row=1, column=0)
+avere_box.grid(row=1, column=1)
+browse_button_PAY.grid(row=1, column=2)
+submit_botton.grid(row=3, column=1)
+mese_label.grid(row=2, column=0)
+tendina_mese.grid(row=2, column=1)
+
+root.mainloop()
+
